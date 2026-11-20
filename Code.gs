@@ -145,16 +145,43 @@ function getInfo() {
   };
 }
 
+function kunciPercobaan_(jenis) {
+  return 'presensi_auth_' + jenis;
+}
+function cekBatasPercobaan_(jenis, batas) {
+  var cache = CacheService.getScriptCache();
+  var jumlah = +(cache.get(kunciPercobaan_(jenis)) || 0);
+  if (jumlah >= batas) throw new Error('Terlalu banyak percobaan. Coba lagi sekitar 15 menit.');
+}
+function catatPercobaanGagal_(jenis) {
+  var cache = CacheService.getScriptCache();
+  var kunci = kunciPercobaan_(jenis);
+  var jumlah = +(cache.get(kunci) || 0) + 1;
+  cache.put(kunci, String(jumlah), 900);
+}
+function resetPercobaan_(jenis) {
+  CacheService.getScriptCache().remove(kunciPercobaan_(jenis));
+}
+
 function cariKaryawan_(id, pin) {
+  var identitas = String(id || '').trim().toUpperCase();
+  if (!identitas || !String(pin || '').trim()) return { error: 'ID dan PIN wajib diisi.' };
+  var jenisBatas = 'karyawan_' + identitas.slice(0, 80);
+  cekBatasPercobaan_(jenisBatas, 10);
   var v = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_KARYAWAN).getDataRange().getDisplayValues();
   for (var i = 1; i < v.length; i++) {
-    if (String(v[i][0]).trim().toUpperCase() === String(id).trim().toUpperCase()) {
+    if (String(v[i][0]).trim().toUpperCase() === identitas) {
       if (String(v[i][4]).toLowerCase() === 'tidak') return { error: 'Akun nonaktif. Hubungi admin.' };
-      if (String(v[i][3]).trim() !== String(pin).trim()) return { error: 'PIN salah.' };
+      if (String(v[i][3]).trim() !== String(pin).trim()) {
+        catatPercobaanGagal_(jenisBatas);
+        return { error: 'PIN salah.' };
+      }
+      resetPercobaan_(jenisBatas);
       return { id: v[i][0], nama: v[i][1], jabatan: v[i][2] };
     }
   }
-  return { error: 'ID karyawan tidak ditemukan.' };
+  catatPercobaanGagal_(jenisBatas);
+  return { error: 'ID atau PIN tidak sesuai.' };
 }
 
 /** Cek login + status hari ini (dipanggil saat karyawan masuk ke aplikasi). */
@@ -171,9 +198,10 @@ function riwayatHariIni_(id) {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PRESENSI);
   var n = sh.getLastRow();
   if (n < 2) return [];
-  var mulai = Math.max(2, n - 1500); // cukup cek baris terbaru agar cepat
-  var v = sh.getRange(mulai, 1, n - mulai + 1, 5).getDisplayValues();
-  return v.filter(function (r) { return r[1] === tgl && String(r[2]).toUpperCase() === String(id).toUpperCase(); })
+  // Periksa seluruh riwayat agar presensi lama pada hari yang sama tidak terlewat
+  // ketika sheet telah memiliki lebih dari 1.500 baris.
+  var v = sh.getRange(2, 1, n - 1, 5).getDisplayValues();
+  return v.filter(function (r) { return r[1] === tgl && String(r[2]).trim().toUpperCase() === String(id).trim().toUpperCase(); })
     .map(function (r) { return r[4]; });
 }
 
@@ -218,7 +246,15 @@ function absen(data) {
 // ===================== API untuk admin.html =====================
 function cekAdmin_(kunci) {
   var cfg = bacaPengaturan_();
-  if (!kunci || kunci !== cfg.kunci_admin) throw new Error('Kunci admin salah.');
+  cekBatasPercobaan_('admin_global', 5);
+  // Nilai bawaan hanya placeholder dan tidak boleh dipakai untuk membuka admin.
+  if (!cfg.kunci_admin || cfg.kunci_admin === 'ganti-kunci-ini' || kunci !== cfg.kunci_admin) {
+    catatPercobaanGagal_('admin_global');
+    throw new Error(cfg.kunci_admin === 'ganti-kunci-ini'
+      ? 'Kunci admin bawaan belum diganti. Ubah nilai kunci_admin pada sheet Pengaturan.'
+      : 'Kunci admin salah.');
+  }
+  resetPercobaan_('admin_global');
   return cfg;
 }
 

@@ -6,13 +6,14 @@ Gratis, tanpa hosting, tanpa database, tanpa API key peta.
 
 ## Fitur
 - Login karyawan pakai **ID + PIN** (dikelola di sheet `Karyawan`).
-- **Geofence di server**: jarak dihitung dengan rumus haversine di `Code.gs`, jadi tidak bisa diakali dari browser. Akurasi GPS yang terlalu buruk juga ditolak.
+- **Geofence di server**: jarak dihitung dengan rumus haversine di `Code.gs`; koordinat tetap berasal dari GPS perangkat, sehingga fake GPS tidak dapat dijamin terdeteksi. Akurasi GPS yang terlalu buruk ditolak.
 - **Selfie** lewat kamera depan (getUserMedia), diberi cap waktu, dikompres ±50 KB, lalu disimpan ke folder Drive.
-- **Anti absen ganda**: masuk & pulang masing-masing sekali per hari; pulang hanya bisa setelah masuk. Ada `LockService` supaya klik dobel tidak tercatat dua kali.
+- **Anti absen ganda**: masuk & pulang masing-masing sekali per hari; pulang hanya bisa setelah masuk. Ada `LockService` untuk mencegah klik bersamaan dan pemeriksaan riwayat harian.
 - **Status otomatis**: Tepat Waktu / Telat (+ menit) / Pulang / Pulang Cepat, sesuai jam & toleransi di sheet `Pengaturan`.
 - **Peta** Leaflet + OpenStreetMap: lingkaran radius kantor dan titik posisi karyawan.
 - **Admin** (`?page=admin`): rekap harian (siapa sudah/belum hadir, link foto) dan bulanan (jumlah hadir, telat, total menit telat), ekspor CSV, cetak.
-- **`setup()`** membuat semua sheet, contoh data, dan folder foto otomatis.
+- **Pembatasan percobaan login**: batas sementara untuk kegagalan PIN per ID karyawan dan kunci admin (menggunakan `CacheService`; bukan sistem anti-serangan berjaminan).
+- **`setup()`** membuat semua sheet, dua akun contoh, dan folder foto otomatis.
 
 ## Langkah deploy (detail untuk pemula)
 
@@ -47,9 +48,11 @@ Di sheet **Pengaturan** (kolom *Nilai*):
 | `wajib_foto` | ya | `tidak` kalau tidak butuh selfie |
 | `kunci_admin` | (ganti!) | Sandi halaman admin |
 
-Di sheet **Karyawan**: isi `ID`, `Nama`, `Jabatan`, `PIN`, `Aktif` (`ya`/`tidak`). Hapus dua baris contoh.
+Di sheet **Karyawan**: isi `ID`, `Nama`, `Jabatan`, `PIN`, `Aktif` (`ya`/`tidak`). Hapus dua baris contoh (`K001` / `K002`) dan ganti seluruh PIN contoh sebelum aplikasi dibagikan. PIN saat ini disimpan sebagai teks di Google Sheets; batasi akses sheet hanya untuk pengelola tepercaya.
 
-Zona waktu: di Apps Script buka **Setelan proyek (ikon gerigi) → Zona waktu → (GMT+07:00) Jakarta** (atau sesuai lokasimu).
+**Wajib sebelum dibagikan:** ganti nilai `kunci_admin` dari `ganti-kunci-ini` dengan kata sandi acak yang panjang. Halaman admin tidak dapat dibuka selama nilai bawaan belum diganti. Kunci admin juga disimpan sebagai teks di sheet `Pengaturan`, jadi lindungi akses Google Sheet.
+
+Zona waktu: di Apps Script buka **Setelan proyek (ikon gerigi) → Zona waktu** lalu pilih zona waktu lokasi kantor. Contoh: Saudi Arabia = `Asia/Riyadh`; Indonesia bagian barat = `Asia/Jakarta`.
 
 ### 5. Deploy sebagai Web App
 1. Klik **Terapkan (Deploy) → Deployment baru**.
@@ -67,7 +70,9 @@ Setiap edit kode harus **Terapkan → Kelola deployment → ikon pensil → Vers
 - **Selalu "di luar radius"**: cek koordinat kantor (latitude Indonesia umumnya negatif) dan perbesar radius.
 - **Akurasi buruk di dalam ruangan**: minta karyawan menyalakan Wi-Fi + GPS mode akurasi tinggi, atau naikkan `akurasi_maks`.
 - **Kuota**: akun Gmail gratis cukup untuk puluhan karyawan per hari. Foto ±50 KB, 1 GB Drive ≈ 20.000 foto.
-- GPS palsu (fake GPS) tidak bisa 100% dicegah oleh aplikasi web mana pun; selfie + cap waktu membantu verifikasi manual.
+- GPS palsu (fake GPS) tidak bisa 100% dicegah oleh aplikasi web; koordinat tetap berasal dari perangkat. Selfie + cap waktu membantu pemeriksaan manual.
+- PIN karyawan dan kunci admin masih berupa teks biasa di Google Sheets. Jangan beri akses spreadsheet kepada karyawan; hanya pengelola tepercaya yang boleh mengaksesnya.
+- Pembatasan percobaan menggunakan `CacheService` bersifat sementara dan best-effort, bukan pengganti autentikasi kuat, audit keamanan, atau proteksi layanan khusus.
 
 ## Struktur folder
 ```
